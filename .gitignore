@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+work/
+output/
+*.h5mu
+*.parquet
+*.log
+.rapids_input.*.h5mu
+

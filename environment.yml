@@ -1,0 +1,12 @@
+name: scmore-pipeline
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - bedtools
+  - meme
+  - pip
+  - pip:
+      - -r requirements.txt
+

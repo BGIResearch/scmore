@@ -1,0 +1,13 @@
+anndata
+duckdb
+h5py
+mudata
+muon
+numpy
+pandas
+psutil
+pyarrow
+pyranges
+scanpy
+scipy
+
