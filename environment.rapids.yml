@@ -1,0 +1,30 @@
+name: scmore-rapids
+channels:
+  - rapidsai
+  - conda-forge
+  - nvidia
+dependencies:
+  # This is the separately invoked GPU environment tested by
+  # scmore/run_rapids_h5mu_compat.py. A CUDA 12-compatible NVIDIA driver is
+  # required on the host.
+  - python=3.13.11
+  - cuda-version=12.2
+  - cudf=25.10
+  - cuml=25.10
+  - cupy=13.6.0
+  - rmm=25.10
+  - numpy=2.2.6
+  - scipy=1.16.3
+  - pandas=2.3.3
+  - pip
+  - pip:
+      - anndata==0.12.7
+      - h5py==3.15.1
+      - mudata==0.3.10
+      - pynndescent==0.6.0
+      - rapids-singlecell==0.13.5
+      - scanpy==1.11.5
+      - scikit-learn==1.7.2
+      - threadpoolctl==3.6.0
+      - umap-learn==0.5.9.post2
+

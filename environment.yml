@@ -3,10 +3,46 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python=3.12
-  - bedtools
-  - meme
+  # Interpreter and external command-line tools used directly by the pipeline.
+  - python=3.12.2
   - pip
+  - bedtools=2.31.1
+  - meme=5.5.9
+  - python-igraph=0.11.5
+  - leidenalg=0.10.2
   - pip:
-      - -r requirements.txt
+      # Core annotated matrix and single-cell stack.
+      - anndata==0.10.8
+      - mudata==0.3.1
+      - muon==0.1.7
+      - scanpy==1.11.3
+      # Numeric, statistics, clustering, and embedding dependencies.
+      - numpy==1.26.4
+      - scipy==1.13.1
+      - pandas==2.2.3
+      - scikit-learn==1.7.2
+      - numba==0.61.0
+      - umap-learn==0.5.7
+      - pynndescent==0.5.13
+      - statsmodels==0.14.4
+      - threadpoolctl==3.6.0
+      # Genomic ranges, sparse storage, and backend export.
+      - pyranges==0.1.4
+      - ncls==0.0.68
+      - pyfaidx==0.8.1.3
+      - h5py==3.13.0
+      - zarr==2.17.0
+      - pyarrow==23.0.0
+      - duckdb==1.4.3
+      # Plotting and Scanpy runtime support.
+      - matplotlib==3.10.7
+      - seaborn==0.13.2
+      - natsort==8.4.0
+      - packaging==25.0
+      - tqdm==4.67.1
+      - psutil==7.0.0
+      # Annotation clients and metadata input support.
+      - openai==2.6.1
+      - requests==2.32.3
+      - openpyxl>=3.1,<4
 

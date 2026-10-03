@@ -31,6 +31,7 @@ not modify the original working files.
 ├── README.md
 ├── requirements.txt
 ├── environment.yml
+├── environment.rapids.yml
 ├── .gitignore
 ├── data
 │   ├── scmore-meta-0727-with-data.frontend.csv
@@ -58,6 +59,34 @@ The metadata snapshot contains 1,283 sample rows. `sample-file-map.tsv` also
 contains 1,283 one-to-one `gse + SAMID` mappings. The demultiplexed HTO rows for
 GSE247442 and GSE251978 map back to their respective parent input containers;
 their final sample labels and experimental groups are retained in the metadata.
+
+## Software environments
+
+The main CPU/orchestration environment contains the complete tested dependency
+set, including FIMO, bedtools, Leiden clustering, UMAP, HDF5/Parquet support,
+and the annotation client:
+
+```bash
+conda env create -f environment.yml
+conda activate scmore-pipeline
+```
+
+GPU embeddings are intentionally executed in a separate environment to avoid
+mixing the main NumPy/Scanpy stack with CUDA/RAPIDS packages:
+
+```bash
+conda env create -f environment.rapids.yml
+```
+
+Set `rapids_env` in `scmore/config.example.json` to that environment's absolute
+path. Set `run_rapids=false` when a compatible NVIDIA GPU is unavailable; the
+pipeline will use its sparse CPU PCA/neighbors/UMAP implementation instead.
+
+`requirements.txt` lists the Python-only main-environment dependencies for
+inspection or pip-based installation. The Conda environment file is preferred
+because FIMO, bedtools, igraph, and Leiden have compiled dependencies. Codex CLI
+is an external authenticated executable and is not installed by Conda; users
+may instead select OpenAI API annotation or provide reviewed annotation JSON.
 
 ## Run the complete pipeline
 
