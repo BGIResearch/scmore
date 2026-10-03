@@ -1,61 +1,109 @@
 # scMORE multiprocessor
 
-每个 dataset 由一个独立进程完成：读取和 >1% feature 过滤、peak 注释、meta
-写入、RNA clustering/marker、GPT Cell Ontology 注释、RNA/ATAC UMAP、
-pseudobulk peak–gene、TF–peak–gene、active score、H5MU 和 backend parquet。
+Each dataset is processed in an independent worker process. The workflow reads
+the input matrices, retains features detected in more than 1% of cells,
+annotates peaks, attaches metadata, performs RNA clustering and marker
+analysis, requests GPT-assisted Cell Ontology annotations, calculates RNA and
+ATAC UMAP embeddings, constructs pseudobulk peak–gene links and TF–peak–gene
+triplets, calculates activity scores, and exports H5MU and backend Parquet
+files.
 
-运行：
+## Running the pipeline
 
 ```bash
 export OPENAI_API_KEY=...
 python -m scmore.multiprocessor --config scmore/config.example.json
 ```
 
-配置 `"annotation_mode": "codex"` 时通过已登录的 Codex CLI 做注释，不需要
-`OPENAI_API_KEY`；`"annotation_mode": "openai"` 则使用 OpenAI API。
+When `"annotation_mode": "codex"`, annotation is performed through an
+authenticated Codex CLI session and `OPENAI_API_KEY` is not required. Set
+`"annotation_mode": "openai"` to use the OpenAI API instead.
 
-也可以预先人工审核 GPT JSON，然后在配置中设置
-`"annotation_response": "/path/reviewed.json"`，此时不会访问 API。JSON 必须包含
-每个 cluster 的标准 Cell Ontology name、CL ID、置信度、组织合理性和理由。
+Annotation responses may also be reviewed manually in advance. Set
+`"annotation_response": "/path/to/reviewed.json"` in the configuration to use
+the reviewed file without contacting an API. The JSON must provide, for every
+cluster, a canonical Cell Ontology label, matching CL identifier, confidence,
+tissue-consistency flag, and supporting rationale.
 
-FIMO 已集成到流程。默认使用配置中按 organism 指定的 genome FASTA 和
-CisDB/CIS-BP 3.10 目录。人类使用 `ref/motif/hs`，小鼠使用
-`ref/motif/mmu`。流程从 `TF_Information_all_motifs_plus.txt` 和
-`pwms_all_motifs/*.txt` 自动选择代表 PWM、生成 MEME，再对所有保留 ATAC
-peaks 扫描，并生成
-`work_root/dataset/fimo/tf_peak_hits.parquet`。`motif_hits[dataset]` 仅用于
-显式复用已有结果；留空 `{}` 即自动运行 FIMO。
-`fimo_jobs` 是并发上限；实际并发会根据细胞数和运行时可用内存动态下调，
-并在 dataset 日志中记录 `fimo_concurrency`。
+## FIMO motif scanning
 
-输出位置为 `output_root/dataset/`，H5MU 固定为
-`dataset/dataset.h5mu`。cell-level parquet 使用固定 seed，按
-`sample_id × gpt_cell_type` 分层降采样；peak–gene、triplet 保留完整结果，
-`regulatory/triplet_active_scores.parquet` 明确不降采样。
-导出完成后，流程使用 DuckDB 将降采样后的 ATAC 表与完整 peak–gene links
-连接并聚合，原子写入 `expression/gene_activity.parquet`，字段为
-`gene、cell_id、activity`。
-在 cell-level 降采样之前，流程还会从完整稀疏矩阵分批计算 zero-aware
-context means，写入 `expression/gene_mean_context.parquet` 和
-`expression/peak_mean_context.parquet`。均包含 `context_name`、
-`context_value`、feature、`mean_value`、`n_cells` 和 `nnz`；未存储的稀疏
-值按 0 计入均值分母。
+FIMO is integrated into the workflow. By default, it uses the organism-specific
+genome FASTA and CisDB/CIS-BP 3.10 directory configured by the user. The
+workflow reads `TF_Information_all_motifs_plus.txt` and
+`pwms_all_motifs/*.txt`, selects representative PWMs, creates a MEME motif
+file, scans every retained ATAC peak, and writes:
 
-数据读取、QC、跨样本 peak merge、GTF peak annotation 均实现在当前目录的
-`data_processing.py`，不依赖旧版 `scmore.MultiomePipeline`。本版本不计算 WNN。
+```text
+work_root/dataset/fimo/tf_peak_hits.parquet
+```
 
-设置 `run_rapids=true` 后使用当前目录的 `run_rapids_h5mu_compat.py`
-计算 RNA/ATAC PCA、neighbors 和 UMAP。该脚本不计算 WNN，并会保护
-`rank_genes_groups_wilcoxon` recarray、校验输出后再替换原 H5MU。
+`motif_hits[dataset]` is only needed to reuse a precomputed result explicitly.
+Leave `motif_hits` as `{}` to run FIMO automatically. `fimo_jobs` defines the
+maximum concurrency. The effective concurrency is reduced dynamically based on
+the number of cells and available memory and is recorded as `fimo_concurrency`
+in the dataset log.
 
-断点续跑默认开启。H5MU 使用 `.building` 临时文件后原子替换；失败数据集不会影响
-其他 worker，汇总写入 `work_root/multiprocessor_report.json`。
+## Outputs and downsampling
 
-日志使用 Python `logging` 和滚动文件：
+Results are written below `output_root/dataset/`, and the H5MU path is always:
 
-- `work_root/multiprocessor.log`：总控、worker 结果和失败汇总；
-- `work_root/dataset/pipeline.log`：单 dataset 全阶段日志；
-- 单文件最大 50 MB，保留 5 个备份；
-- 格式包含时间、级别、dataset、PID、模块、阶段耗时和异常堆栈。
+```text
+output_root/dataset/dataset.h5mu
+```
 
-配置项 `log_level` 默认为 `INFO`，可改为 `DEBUG`、`WARNING` 或 `ERROR`。
+Cell-level Parquet tables are stratified by
+`sample_id × gpt_cell_type` and downsampled with a fixed random seed. Complete
+peak–gene links and TF–peak–gene triplets are retained.
+`regulatory/triplet_active_scores.parquet` is explicitly not downsampled.
+
+After export, the workflow uses DuckDB to join downsampled ATAC values with the
+complete peak–gene links, aggregates the results, and atomically writes
+`expression/gene_activity.parquet` with the columns `gene`, `cell_id`, and
+`activity`.
+
+Before cell-level downsampling, zero-aware context means are calculated in
+batches from the complete sparse matrices and written to:
+
+```text
+expression/gene_mean_context.parquet
+expression/peak_mean_context.parquet
+```
+
+Both tables contain `context_name`, `context_value`, the corresponding feature,
+`mean_value`, `n_cells`, and `nnz`. Values omitted from sparse storage are
+treated as zero in the mean denominator.
+
+## Data processing and embeddings
+
+Input reading, quality control, cross-sample peak merging, and GTF-based peak
+annotation are implemented in `data_processing.py`. The workflow does not
+depend on the legacy `scmore.MultiomePipeline` and does not calculate WNN.
+
+When `run_rapids=true`, `run_rapids_h5mu_compat.py` calculates RNA and ATAC PCA,
+nearest-neighbor graphs, and UMAP embeddings. It does not calculate WNN. The
+compatibility wrapper preserves the `rank_genes_groups_wilcoxon` record array,
+validates the generated embeddings, and only then replaces the original H5MU.
+If GPU processing fails, the main workflow falls back to the sparse CPU
+implementation.
+
+## Checkpoints and logging
+
+Checkpoint resumption is enabled by default. H5MU files are first written to a
+`.building` temporary path and then replaced atomically. A failed dataset does
+not interrupt other workers. The batch summary is written to:
+
+```text
+work_root/multiprocessor_report.json
+```
+
+Logging uses Python `logging` with rotating files:
+
+- `work_root/multiprocessor.log` contains controller messages, worker results,
+  and the failure summary.
+- `work_root/dataset/pipeline.log` contains all stages for one dataset.
+- Each log file is limited to 50 MB, with five backups retained.
+- Records include time, severity, dataset, PID, module, stage duration, and
+  exception stack traces.
+
+`log_level` defaults to `INFO` and may be changed to `DEBUG`, `WARNING`, or
+`ERROR`.
